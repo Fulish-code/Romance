@@ -65,13 +65,15 @@ def sin_acentos(palabra):
     return "".join(c for c in unicodedata.normalize("NFD", palabra) if unicodedata.category(c) != "Mn")
 
 
-def analisis_lexico(codigo):
+def analisis_lexico(codigo, solo_primero=False):
     tokens = []      #cada token: [texto, tipo, linea]
     errores = []     #cada error: [linea, fase, error, solucion]
     i = 0
     linea = 1
     n = len(codigo)
     while i < n:
+        if solo_primero and errores:
+            break
         c = codigo[i]
         if c == "\n":
             linea += 1
@@ -186,6 +188,7 @@ pos = 0
 errores_sin = []
 lineas_codigo = []
 sospechoso = None
+primer_error = False
 
 
 def actual():
@@ -297,6 +300,9 @@ def sentencias():
         try:
             sentencia()
         except ErrorSintactico as e:
+            #si solo se quiere el primer error, ya no se sigue revisando
+            if primer_error:
+                raise
             errores_sin.append([e.args[0], "Sintáctico", e.args[1], e.args[2]])
             recuperar(inicio)
 
@@ -590,14 +596,15 @@ def salto():
     punto_y_coma()
 
 
-def analisis_sintactico(tokens, codigo):
-    global toks, pos, errores_sin, lineas_codigo, sospechoso
+def analisis_sintactico(tokens, codigo, solo_primero=False):
+    global toks, pos, errores_sin, lineas_codigo, sospechoso, primer_error
     ultima = tokens[-1][2] if tokens else 1
     toks = tokens + [["fin del archivo", "FIN", ultima]]
     pos = 0
     errores_sin = []
     lineas_codigo = codigo.split("\n")
     sospechoso = None
+    primer_error = solo_primero
     try:
         programa()
     except ErrorSintactico as e:
@@ -613,7 +620,7 @@ def validar(evento=None):
     tabla_errores.delete(*tabla_errores.get_children())
     editor.tag_remove("error", "1.0", "end")
 
-    tokens, errores = analisis_lexico(codigo)
+    tokens, errores = analisis_lexico(codigo, solo_primero.get())
     num = 1
     for t in tokens:
         if t[1] == "Error":
@@ -627,7 +634,7 @@ def validar(evento=None):
         lbl_estado.config(text="✖ " + str(len(errores)) + " error(es) léxico(s). Corrígelos para hacer el análisis sintáctico",
                           fg="#b00020")
     else:
-        errores = analisis_sintactico(tokens, codigo)
+        errores = analisis_sintactico(tokens, codigo, solo_primero.get())
         if errores:
             lbl_estado.config(text="✖ " + str(len(errores)) + " error(es) sintáctico(s)", fg="#b00020")
         else:
@@ -695,6 +702,20 @@ def guardar():
             f.write(editor.get("1.0", "end-1c"))
 
 
+def seleccionar_todo(evento=None):
+    editor.tag_add("sel", "1.0", "end-1c")
+    editor.mark_set("insert", "end-1c")
+    return "break"
+
+
+def borrar(evento=None):
+    #si hay texto seleccionado (por ejemplo con Ctrl+A) se borra todo lo seleccionado
+    if editor.tag_ranges("sel"):
+        editor.delete("sel.first", "sel.last")
+        colorear()
+        return "break"
+
+
 def cargar_ejemplo():
     editor.delete("1.0", "end")
     editor.insert("1.0", EJEMPLO)
@@ -717,6 +738,8 @@ tk.Button(barra_botones, text="Guardar", width=9, command=guardar).pack(side="le
 tk.Button(barra_botones, text="Ejemplo", width=9, command=cargar_ejemplo).pack(side="left", padx=4)
 tk.Button(barra_botones, text="Validar (F5)", width=12, bg="#2e7d32", fg="white", font=("DejaVu Sans", 10, "bold"),
           command=validar).pack(side="left", padx=4)
+solo_primero = tk.BooleanVar(value=True)
+tk.Checkbutton(barra_botones, text="Analizar hasta el primer error", variable=solo_primero).pack(side="left", padx=4)
 lbl_estado = tk.Label(barra_botones, text="Escribe o modifica el código y presiona Validar", font=("DejaVu Sans", 11, "bold"))
 lbl_estado.pack(side="left", padx=15)
 
@@ -741,6 +764,9 @@ editor.tag_config("com", foreground="#8c8c8c")
 editor.tag_config("num", foreground="#1750eb")
 editor.tag_config("error", background="#ffd9d9")
 editor.bind("<KeyRelease>", colorear)
+editor.bind("<Control-a>", seleccionar_todo)
+editor.bind("<Control-A>", seleccionar_todo)
+editor.bind("<BackSpace>", borrar)
 arriba.add(marco_editor, stretch="always", width=760)
 
 #Tabla de tokens

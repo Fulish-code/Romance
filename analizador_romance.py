@@ -51,7 +51,7 @@ comezo Ejemplo {
 """
 
 
-# ------------------------- ANALISIS LEXICO -------------------------
+#Analisis lexico
 
 def es_letra(c):
     return ("a" <= c <= "z") or ("A" <= c <= "Z") or c == "_"
@@ -66,8 +66,8 @@ def sin_acentos(palabra):
 
 
 def analisis_lexico(codigo, solo_primero=False):
-    tokens = []      #cada token: [texto, tipo, linea]
-    errores = []     #cada error: [linea, fase, error, solucion]
+    tokens = []  #[texto, tipo, linea]
+    errores = []  #[linea, fase, error, solucion]
     i = 0
     linea = 1
     n = len(codigo)
@@ -176,8 +176,7 @@ def analisis_lexico(codigo, solo_primero=False):
     return tokens, errores
 
 
-# ------------------------- ANALISIS SINTACTICO -------------------------
-#Un analizador descendente recursivo: una funcion por cada no terminal de la BNF
+#Analisis sintactico, cada no terminal de la gramatica es una funcion
 
 class ErrorSintactico(Exception):
     pass
@@ -249,6 +248,8 @@ def punto_y_coma():
         error("No se puede usar '" + t[0] + "' aquí",
               "Las comparaciones solo van en la condición de si ( ) o de quand ( )")
     linea = anterior()[2]
+    if t[2] == linea and t[1] != "FIN":
+        error("Falta ';' al final de la sentencia", "Agrega ';' después de '" + anterior()[0] + "'", linea)
     texto = lineas_codigo[linea - 1].split("//")[0].strip()
     error("Falta ';' al final de la sentencia", "Agrega ';' al final de la línea: " + texto + ";", linea)
 
@@ -271,12 +272,26 @@ def identificador(que, solucion):
 # <programa> := comezo <id> { <sentencias> }
 def programa():
     global sospechoso
-    if not ve("comezo"):
+    if ve("comezo"):
+        avanza()
+    else:
         t = actual()
-        if t[0].lower() in OTROS:
-            error("'" + t[0] + "' no es de Romance", "El programa empieza con: comezo Nombre { ... }")
-        error("El programa debe empezar con 'comezo'", "Escribe al inicio: comezo Nombre { ... }")
-    avanza()
+        try:
+            if t[0].lower() in OTROS:
+                error("'" + t[0] + "' no es de Romance", "El programa empieza con: comezo Nombre { ... }")
+            if t[1] == "Var" and difflib.get_close_matches(t[0].lower(), ["comezo"], 1, 0.6):
+                error("'" + t[0] + "' no es palabra reservada",
+                      "¿Quisiste decir 'comezo'? El programa empieza con: comezo Nombre { ... }")
+            error("El programa debe empezar con 'comezo'", "Escribe al inicio: comezo Nombre { ... }")
+        except ErrorSintactico as e:
+            if primer_error:
+                raise
+            errores_sin.append([e.args[0], "Sintáctico", e.args[1], e.args[2]])
+            #se sigue revisando si solo esta mal escrito o falta el comezo
+            if t[1] == "Var" and siguiente()[1] == "Var":
+                avanza()
+            elif not (t[1] == "Var" and siguiente()[0] == "{"):
+                return
     identificador("el nombre del programa", "Ponle nombre al programa: comezo Ejemplo {")
     if not ve("{"):
         error("Se esperaba '{' después del nombre del programa", "Abre el programa con llave: comezo " + anterior()[0] + " {", anterior()[2])
@@ -307,7 +322,7 @@ def sentencias():
             recuperar(inicio)
 
 
-#Modo panico: brinca tokens hasta el siguiente ';' o el inicio de otra sentencia
+#modo panico, se salta hasta el ';' o hasta la siguiente sentencia
 def recuperar(inicio):
     global pos
     nivel = 0
@@ -377,7 +392,7 @@ def sentencia():
               "Una sentencia empieza con inteiro, real, cadeia, fie, llegeix, scrivi, si, etiquette o allera")
 
 
-#Cuando una sentencia empieza con un identificador se trata de adivinar que quiso escribir
+#la sentencia empieza con un nombre, se busca que quiso escribir
 def variable_suelta():
     t = actual()
     s = siguiente()
@@ -404,7 +419,13 @@ def declaracion():
     tipo = actual()[0]
     avanza()
     item_decl(tipo)
-    while ve(",") or actual()[1] == "Var":
+    while ve(",") or actual()[1] in ["Var", "Num", "Cad"]:
+        if actual()[1] != "Var" and not ve(","):
+            if anterior()[1] == "Var":
+                error("Falta '=' entre '" + anterior()[0] + "' y '" + actual()[0] + "'",
+                      "Para dar un valor inicial se usa '=': " + tipo + " " + anterior()[0] + " = " + actual()[0] + ";")
+            error("Sobra " + encontrado() + " después de '" + anterior()[0] + "'",
+                  "Cada variable recibe un solo valor: " + tipo + " x = valor;")
         if actual()[1] == "Var":
             error("Falta ',' entre '" + anterior()[0] + "' y '" + actual()[0] + "'",
                   "Separa las variables con coma: " + tipo + " " + anterior()[0] + ", " + actual()[0] + ";")
@@ -559,7 +580,7 @@ def bloque(de):
     sentencias()
     if not ve("}"):
         error("Falta '}' para cerrar el bloque que abre en la línea " + str(linea_abre), "Agrega '}' al final del bloque", anterior()[2])
-    #si la llave que cierra no esta alineada con la que abre, se recuerda por si falta una llave
+    #si las llaves no estan alineadas puede ser la que falta
     if sangria(actual()[2]) != sangria(linea_abre) and sospechoso is None:
         sospechoso = linea_abre
     avanza()
@@ -612,7 +633,7 @@ def analisis_sintactico(tokens, codigo, solo_primero=False):
     return errores_sin
 
 
-# ------------------------- INTERFAZ GRAFICA -------------------------
+#Interfaz
 
 def validar(evento=None):
     codigo = editor.get("1.0", "end-1c")
@@ -709,7 +730,7 @@ def seleccionar_todo(evento=None):
 
 
 def borrar(evento=None):
-    #si hay texto seleccionado (por ejemplo con Ctrl+A) se borra todo lo seleccionado
+    #borra lo seleccionado, por ejemplo despues de Ctrl+A
     if editor.tag_ranges("sel"):
         editor.delete("sel.first", "sel.last")
         colorear()

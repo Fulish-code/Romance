@@ -1,5 +1,7 @@
 # Romance
 
+Versión 1.1.0
+
 Romance es un lenguaje de programación pequeño que diseñamos para la materia de Teoría de la Computación. Sus palabras reservadas no están en inglés y las operaciones aritméticas se escriben en notación polaca, por ejemplo `(+ a b)`.
 
 ## Archivos
